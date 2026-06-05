@@ -1,0 +1,26 @@
+{
+  "opcua": { "port": 4840 },
+  "plcs": [
+    {
+      "name": "FakeLine",
+      "ip": "127.0.0.1",
+      "port": 1102,
+      "rack": 0,
+      "slot": 1,
+      "poll_interval_ms": 500,
+      "tags": [
+        { "name": "Motor1_Speed",   "area": "DB", "db": 1, "start": 0,  "type": "REAL"  },
+        { "name": "Motor1_Current", "area": "DB", "db": 1, "start": 4,  "type": "REAL"  },
+        { "name": "Motor1_Running", "area": "DB", "db": 1, "start": 8,  "bit": 0, "type": "BOOL" },
+        { "name": "Motor1_Fault",   "area": "DB", "db": 1, "start": 8,  "bit": 1, "type": "BOOL" },
+        { "name": "Heater_On",      "area": "DB", "db": 1, "start": 8,  "bit": 2, "type": "BOOL" },
+        { "name": "Temperature",    "area": "DB", "db": 1, "start": 10, "type": "INT"   },
+        { "name": "PartCounter",    "area": "DB", "db": 1, "start": 12, "type": "DINT"  },
+        { "name": "StatusWord",     "area": "DB", "db": 1, "start": 16, "type": "WORD"  },
+        { "name": "TotalRuntime",   "area": "DB", "db": 1, "start": 18, "type": "DWORD" },
+        { "name": "Pressure",       "area": "DB", "db": 1, "start": 22, "type": "LREAL" },
+        { "name": "TankLevel",      "area": "DB", "db": 1, "start": 30, "type": "REAL"  }
+      ]
+    }
+  ]
+}

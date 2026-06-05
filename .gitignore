@@ -1,0 +1,37 @@
+# macOS / editor files
+.DS_Store
+*.swp
+*.log
+.vscode/
+.idea/
+*.iml
+
+# C build outputs
+/gateway
+/fake_plc
+/ua_monitor
+/build_test_*
+/*.dSYM/
+/runtime/
+
+# Packaged app outputs belong in GitHub Releases, not source commits
+/dist/
+
+# Flutter / Dart generated files
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/build/
+app/coverage/
+app/macos/Flutter/ephemeral/
+
+# Xcode generated files
+app/macos/Flutter/Generated.xcconfig
+app/macos/Flutter/flutter_export_environment.sh
+app/macos/Pods/
+app/macos/Podfile.lock
+
+# Crash reports / temp artifacts
+flutter_*.log

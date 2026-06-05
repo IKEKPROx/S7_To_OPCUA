@@ -1,0 +1,12 @@
+{
+  "plcs": [
+    {
+      "name": "BadRange_PLC",
+      "ip": "192.168.0.9",
+      "poll_interval_ms": 0,
+      "tags": [
+        { "name": "NegStart", "area": "DB", "db": 1, "start": -4, "type": "REAL" }
+      ]
+    }
+  ]
+}
