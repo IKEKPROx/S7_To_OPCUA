@@ -389,52 +389,34 @@ When encountering runtime anomalies during deployment and debugging, operators m
 
 ## 15. Containerized Deployment (Docker Multi-Arch Images)
 
-> **Platform Environment Adaptation Notice**: Container images are fundamentally built upon a standardized Linux environment architecture context. Operating upon macOS platforms leveraging Apple Silicon, the host mechanism utilizes a virtualized machine embedded within Docker Desktop to facilitate execution of the `linux/arm64` architectural variant. This project yields **Dual-architecture image distributions (`linux/amd64` and `linux/arm64`)**, ensuring pervasive deployment coverage encompassing x86 server nodes, ARM-based edge infrastructure (e.g., Raspberry Pi clusters), and local macOS (Apple Silicon) developmental testbeds, delivering a uniform operational continuity.
+A prebuilt **multi-architecture Docker image** (`linux/amd64` + `linux/arm64`) is published, covering x86 servers, ARM edge devices (e.g. Raspberry Pi), and Apple Silicon macOS. The image is ready to run — no compilers or dependencies need to be installed on the target machine.
 
-The project containerization applies **Multi-stage Build** technology: During the compilation phase, a fully comprehensive Linux framework compiles the C source code, producing the core shared library `libsnap7.so`, the open62541 protocol stack, and the principal gateway binary. Transitioning to the runtime tier, solely the compiled executable artifacts and essential dynamic library dependencies are preserved, yielding an optimal reduction in the structural footprint of the container image.
+Image: [`impxssive/s7-opcua`](https://hub.docker.com/r/impxssive/s7-opcua) (Docker Hub).
 
-An integrated build orchestration script `docker-build.sh` is provided, supplying three standardized operational modes:
-
-```bash
-# Mode 1: Perform a monolithic build targeting the native host architecture and deposit it directly into the local Docker image repository; optimized for immediate local validation.
-./docker-build.sh
-docker run --rm -p 4840:4840 s7-opcua:latest
-
-# Mode 2: Trigger cross-architectural compilation spawning both amd64 and arm64 variants, exporting the output exclusively as an OCI-compliant archive format.
-./docker-build.sh --multi
-
-# Mode 3: Compile the complete multi-architectural suite and proceed to sequentially upload the artifacts to a designated remote image registry.
-./docker-build.sh --push registry.example.com/your_namespace/s7-opcua:1.0
-```
-
-**For production environments requiring connection to physical PLC devices**, it is necessary to utilize Docker's volume mapping mechanism (`-v` parameter) during the container's startup command. This mounts the local host's configuration directory, superseding the container's internal default `/app/config` pathway:
+Pull the image:
 
 ```bash
-docker run --rm -p 4840:4840 \
-  -v /local/custom_config_directory_path:/app/config \
-  s7-opcua:latest config/target_config_file_name.json
+docker pull impxssive/s7-opcua:0.1.1
 ```
 
-To augment deployment efficiency, the official image internally bundles the **Excel Point-Table Automated Conversion Tool Suite** (inclusive of the Python 3 runtime, the `openpyxl` dependency, and the `tools/xlsx_to_config.py` script). This module provisions two strategic execution modalities:
+The image bundles the **Excel point-table converter** (Python 3 runtime + `openpyxl` + `tools/xlsx_to_config.py`); the entrypoint supports two startup modes:
 
 ```bash
-# Execution Strategy 1: Explicitly mount and execute based on a pre-established JSON configuration document (standard operating paradigm).
-docker run --rm -p 4840:4840 -v /local/config_directory_path:/app/config \
-  s7-opcua:latest config/target_config_file_name.json
+# Mode 1: load a JSON config directly (standard)
+# mount your host config directory to /app/config via -v
+docker run --rm -p 4840:4840 -v /host/config-dir:/app/config \
+  impxssive/s7-opcua:0.1.1 config/your-config.json
 
-# Execution Strategy 2: Submit a raw Excel point-table filepath during instantiation; the container engine autonomously finalizes the configuration deciphering and subsequently deploys the main gateway service.
-docker run --rm -p 4840:4840 -v /local/config_directory_path:/app/config \
-  s7-opcua:latest --xlsx /app/config/source_point_table.xlsx \
-  --ip 192.168.0.10 --plc-name TargetProductionLinePLC
+# Mode 2: feed an Excel point-table; it is converted inside the container, then the gateway starts
+docker run --rm -p 4840:4840 -v /host/config-dir:/app/config \
+  impxssive/s7-opcua:0.1.1 --xlsx /app/config/points.xlsx \
+  --ip 192.168.0.10 --plc-name FurnacePLC
 ```
 
-> **Supplementary Configuration Directive**: Adopting the second execution strategy mandates that the primary argument succeeding the `--xlsx` flag must reflect the absolute path mapping to the targeted Excel file. Any ancillary parameters appended thereafter within the command string (such as `--ip`, `--port`, `--plc-name`, `--opcua-port`, `--cache-ttl-ms`, etc.) are transparently forwarded into the inner conversion script's processing core. For a comprehensive cataloging of applicable configuration constraints, refer to Section 16 of this document. Critical Notice: Parsing source tables formatted in the Siemens absolute addressing style necessitates the explicit injection of the `--ip` configuration argument within the command line execution.
-
-> **Technical Implementation Nuances and Deployment Constraints**:
-> - Execution of the cross-platform architecture compilation workflow is deeply reliant on the QEMU instruction set emulator framework. At the onset of its execution sequence, the build script autonomously invokes and registers the `binfmt --install` initialization procedures, demanding no external user interference.
-> - Stemming from inherent regulatory limitations governing Docker image storage layering mechanisms, multi-architecture image outputs currently reject direct insertion attempts into local host repositories via the `--load` command; these outputs are restricted to remote registry pushing or localized archival exporting operations.
-> - Operating as an active client entity, this gateway assumes an assertive connection strategy targeting the downstream PLC (specifically bound for port 102). Therefore, relying upon Docker's intrinsic Default Bridge Network topology sufficiently fulfills the foundational communication requisites; the supplemental `-p 4840` port mapping parameter exists strictly to externally broadcast the OPC UA server listener port.
-> - Inside the fundamental build definition manifesto `Dockerfile`, the open62541 protocol stack component version is rigidly hardcoded to the `v1.5.4` standard. This measure is invoked to systematically assure strict API consistency mapped against the project's C source code interface. Should network disturbances yield connection timeouts retrieving this specific tag, engineering teams maintain the discretion to shift the reference tag to alternate operational releases housed within the stable 1.5.x branch life cycle.
+> **Notes**:
+> - After `--xlsx` comes the Excel file path; remaining args (`--ip`, `--port`, `--plc-name`, `--opcua-port`, `--cache-ttl-ms`, …) are forwarded to the converter (see Section 16). Chinese tables must include `--ip`.
+> - Ports: `-p 4840` exposes the OPC UA server; the gateway dials out to the PLC on port 102, so Docker's default bridge network suffices.
+> - In production, prefer a pinned version (e.g. `0.1.1`) over `latest` for reproducibility.
 
 ---
 

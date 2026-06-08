@@ -25,3 +25,9 @@ config/cn_fake.json
 .DS_Store
 .claude/
 .vscode/
+
+# Docker / 构建文件：本地保留(还能 build/推镜像)，但不放上 GitHub —— 仓库只展示代码
+.dockerignore
+Dockerfile
+docker-build.sh
+docker-entrypoint.sh

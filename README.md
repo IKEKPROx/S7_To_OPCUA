@@ -389,52 +389,34 @@ make tsan       # (高级选项) 基于 ThreadSanitizer 实施数据争用 (Data
 
 ## 15. 容器化部署（Docker 多架构镜像）
 
-> **平台环境适配说明**：容器镜像底层基于标准化 Linux 环境构建体系。针对采用 Apple Silicon 芯片的 macOS 平台，其宿主环境通过 Docker Desktop 内置虚拟机支撑 `linux/arm64` 架构变体运行。本项目提供的 **`linux/amd64` 与 `linux/arm64` 双架构镜像发行版**，能够全面覆盖 x86 架构服务器节点、ARM 架构边缘设备（如树莓派系列）以及 macOS (Apple Silicon) 本地开发测试环境，提供一致的运行体验。
+项目已发布预构建的**多架构 Docker 镜像**（`linux/amd64` + `linux/arm64`），可覆盖 x86 架构服务器、ARM 架构边缘设备（如树莓派系列）以及 Apple Silicon 的 macOS 平台。镜像开箱即用，目标机器无需安装任何编译器或依赖。
 
-项目容器镜像采用**多阶段构建 (Multi-stage Build) 技术**：在构建编译阶段，基于完整 Linux 环境执行 C 源码编译，生成核心依赖库 `libsnap7.so`、open62541 协议栈及网关主程序；在最终运行时阶段，仅剥离出编译完成的可执行二进制文件及运行时必备的动态链接库资源，从而实现极致的轻量化镜像体积控制。
+镜像地址：[`impxssive/s7-opcua`](https://hub.docker.com/r/impxssive/s7-opcua)（Docker Hub）。
 
-项目内附构建脚本 `docker-build.sh`，支持三种标准化作业模式：
-
-```bash
-# 模式一：针对当前宿主机架构执行单体构建，并自动加载至本地 Docker 镜像库，适用于快速验证
-./docker-build.sh
-docker run --rm -p 4840:4840 s7-opcua:latest
-
-# 模式二：触发跨架构交叉编译生成 amd64 与 arm64 多架构镜像，并以 OCI 规范归档文件形式导出
-./docker-build.sh --multi
-
-# 模式三：构建完整多架构镜像体系，并自动执行推送至指定的远程镜像仓库（Registry）
-./docker-build.sh --push registry.example.com/your_namespace/s7-opcua:1.0
-```
-
-**针对生产环境连接真实 PLC 设备的需求**，需在启动容器时通过 Docker 的卷映射（Volume Mapping）机制 `-v` 参数挂载宿主机侧的配置文件目录，以替换容器默认的 `/app/config` 配置路径：
+拉取镜像：
 
 ```bash
-docker run --rm -p 4840:4840 \
-  -v /宿主机/自定义配置目录路径:/app/config \
-  s7-opcua:latest config/目标配置文件名称.json
+docker pull impxssive/s7-opcua:0.1.1
 ```
 
-为提升实施便捷性，官方镜像内部已预装 **Excel 点表自动化转换工具集**（集成 Python 3 运行时环境、`openpyxl` 依赖组件及 `tools/xlsx_to_config.py` 转换脚本），并提供两种启动执行策略：
+镜像内部已集成 **Excel 点表自动转换工具**（Python 3 运行时 + `openpyxl` + `tools/xlsx_to_config.py`），入口脚本支持两种启动方式：
 
 ```bash
-# 策略一：直接挂载并加载预先生成的 JSON 配置文件启动服务（常规操作模式）
-docker run --rm -p 4840:4840 -v /宿主机/配置目录路径:/app/config \
-  s7-opcua:latest config/目标配置文件名称.json
+# 方式一：直接加载 JSON 配置启动（常规模式）
+# 通过 -v 将宿主机的配置目录挂载至容器的 /app/config
+docker run --rm -p 4840:4840 -v /宿主机/配置目录:/app/config \
+  impxssive/s7-opcua:0.1.1 config/你的配置.json
 
-# 策略二：输入原始 Excel 点表文件路径启动，容器引擎将自动完成配置解析转换并随之拉起网关主服务
-docker run --rm -p 4840:4840 -v /宿主机/配置目录路径:/app/config \
-  s7-opcua:latest --xlsx /app/config/源数据点表.xlsx \
-  --ip 192.168.0.10 --plc-name 目标生产线PLC
+# 方式二：直接传入 Excel 点表，容器内自动完成转换后再启动网关
+docker run --rm -p 4840:4840 -v /宿主机/配置目录:/app/config \
+  impxssive/s7-opcua:0.1.1 --xlsx /app/config/点表.xlsx \
+  --ip 192.168.0.10 --plc-name 炉区PLC
 ```
 
-> **补充配置说明**：当启用第二种策略时，指令中 `--xlsx` 标识后的首个参数必须为目标 Excel 文件的绝对路径；指令行内后续附加的声明参数（如 `--ip`、`--port`、`--plc-name`、`--opcua-port`、`--cache-ttl-ms` 等扩展参数项），将透明转交至内部的转换脚本处理逻辑。相关参数的详细配置约束请参阅本文档第 16 章节。特别提示：若处理采用西门子绝对地址标记格式的点表数据源时，指令行内必须显式配置 `--ip` 参数设定。
-
-> **技术实现细节与部署约束**：
-> - 跨平台架构交叉编译流程深度依赖 QEMU 指令集模拟器环境，构建脚本在执行初期将自动调用并注册 `binfmt --install` 初始化项，用户无需额外干预。
-> - 鉴于 Docker 镜像存储层机制规范限制，多架构镜像产物暂不支持直接通过 `--load` 指令加载至宿主机本地镜像库环境，产物仅支持向远程镜像仓库推送或导出为标准归档数据包。
-> - 本网关作为客户端角色，采用主动连接的发起模式向底层 PLC 建立通信链路（目的端口为 102），故基于 Docker 默认的网络桥接模式（Bridge Network）即可满足其底层通信需求；附加 `-p 4840` 参数设定则专用于对外映射并暴露 OPC UA 服务端监听端口。
-> - 在镜像构建基础定义文档 `Dockerfile` 中，open62541 协议栈组件版本硬编码锁定为 `v1.5.4`，此举在于严格保障项目 C 源码接口层面的 API 兼容性；若遇特定网络环境下该版本标签拉取超时或失败情况，开发者可酌情调整至其他处于维护期的 1.5.x 分支稳定版本标签。
+> **说明**：
+> - `--xlsx` 后的首个参数为 Excel 文件路径；其余参数（`--ip`、`--port`、`--plc-name`、`--opcua-port`、`--cache-ttl-ms` 等）将原样转发给内部转换脚本（详见第 16 章）。处理中文点表时必须提供 `--ip`。
+> - 端口：`-p 4840` 用于对外暴露 OPC UA 服务端口；网关作为客户端向 PLC 出站连接 102 端口，使用 Docker 默认桥接网络即可。
+> - 生产环境建议使用**明确的版本号**（如 `0.1.1`）而非 `latest`，以保证部署可复现。
 
 ---
 
