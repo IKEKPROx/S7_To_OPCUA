@@ -1,0 +1,11 @@
+{
+  "plcs": [
+    {
+      "name": "Bad_PLC",
+      "ip": "192.168.0.9",
+      "tags": [
+        { "name": "Oops", "area": "DB", "db": 1, "start": 0, "type": "BOOL" }
+      ]
+    }
+  ]
+}
