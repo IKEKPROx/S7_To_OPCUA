@@ -43,6 +43,23 @@ int main(void)
         return 1;
     }
 
+    /* 再注册一块大 DB(DB20)放 NUM_BULK 个 INT，用于测“大点表跨批”批量读 */
+    enum { NUM_BULK = 50 };
+    static uint8_t db20[NUM_BULK * 2];
+    for (int i = 0; i < NUM_BULK; i++) {
+        int16_t v = (int16_t)(100 + i);             /* 每个点一个唯一值，便于查顺序是否串位 */
+        db20[i*2]     = (uint8_t)((v >> 8) & 0xFF);  /* 大端：高字节在前 */
+        db20[i*2 + 1] = (uint8_t)(v & 0xFF);
+    }
+    int rerr2 = Srv_RegisterArea(srv, srvAreaDB, 20, db20, sizeof(db20));
+    if (rerr2 != 0) {
+        char emsg[256]; Srv_ErrorText(rerr2, emsg, sizeof(emsg));
+        printf("  [FAIL] Srv_RegisterArea(DB20) 失败: %s\n", emsg);
+        Srv_Destroy(&srv);
+        printf("\n结果: %d 通过, 1 失败\n", g_pass);
+        return 1;
+    }
+
     /* Find an available port (1102-1110) / 寻找可用端口 */
     int chosen_port = 0;
     for (uint16_t p = 1102; p <= 1110; p++) {
@@ -105,7 +122,61 @@ int main(void)
     check(s7_conn_read_tag(c, &tags[2], &v)==0 && v.type==S7_DINT
           && v.as.d==256,   "DINT Count = 256");
 
-    /* ---------- 4. Test disconnection / 验证掉线处理 ---------- */
+    /* ---------- 4. Bulk read via ReadMultiVars / 批量读 ---------- */
+    printf("== 批量读 (ReadMultiVars) ==\n");
+
+    /* 4.1 基本：3 个点一次读回 */
+    {
+        const TagCfg *arr[3] = { &tags[0], &tags[1], &tags[2] };
+        S7Value vv[3]; int rr[3] = {0};
+        int rc = s7_conn_read_many(c, arr, 3, vv, rr);
+        check(rc == 0, "read_many 3 点返回 0");
+        check(rr[0]==0 && vv[0].type==S7_REAL && vv[0].as.r>1.49f && vv[0].as.r<1.51f,
+              "批量 Speed = 1.5 (REAL)");
+        check(rr[1]==0 && vv[1].type==S7_BOOL && vv[1].as.b==true,
+              "批量 Run = true (BOOL)");
+        check(rr[2]==0 && vv[2].type==S7_DINT && vv[2].as.d==256,
+              "批量 Count = 256 (DINT)");
+    }
+
+    /* 4.2 含越界坏点：坏点 result!=0，旁边的好点不受影响(逐项隔离) */
+    {
+        TagCfg bad; memset(&bad, 0, sizeof(bad));
+        strcpy(bad.name, "Bad"); bad.area=AREA_DB; bad.db=10;
+        bad.start=1000; bad.bit=-1; bad.type=S7_DINT;   /* start 远超 DB10(16字节)→越界 */
+        const TagCfg *arr[3] = { &tags[0], &bad, &tags[2] };
+        S7Value vv[3]; int rr[3] = { -99, -99, -99 };
+        s7_conn_read_many(c, arr, 3, vv, rr);
+        check(rr[0]==0 && vv[0].as.r>1.49f && vv[0].as.r<1.51f, "坏点旁的好点 Speed 仍正确");
+        check(rr[1]!=0, "越界坏点 result 非 0");
+        check(rr[2]==0 && vv[2].as.d==256, "坏点之后的好点 Count 仍正确");
+    }
+
+    /* 4.3 大点表跨批：NUM_BULK 个点跨多批(每批≤MaxVars=20)，验证不丢不串 */
+    {
+        static TagCfg bulk[NUM_BULK];
+        const TagCfg *arr[NUM_BULK];
+        S7Value vv[NUM_BULK]; int rr[NUM_BULK];
+        for (int i = 0; i < NUM_BULK; i++) {
+            memset(&bulk[i], 0, sizeof(bulk[i]));
+            snprintf(bulk[i].name, sizeof(bulk[i].name), "P%d", i);
+            bulk[i].area=AREA_DB; bulk[i].db=20; bulk[i].start=i*2;
+            bulk[i].bit=-1; bulk[i].type=S7_INT;
+            arr[i] = &bulk[i];
+            rr[i] = -99;
+        }
+        int rc = s7_conn_read_many(c, arr, NUM_BULK, vv, rr);
+        check(rc == 0, "read_many 大点表(50点)返回 0");
+        int allok = 1, firstbad = -1;
+        for (int i = 0; i < NUM_BULK; i++)
+            if (rr[i]!=0 || vv[i].type!=S7_INT || vv[i].as.i != (int16_t)(100+i)) {
+                allok=0; firstbad=i; break;
+            }
+        if (!allok) printf("    第一个出错的点: index=%d rr=%d\n", firstbad, rr[firstbad]);
+        check(allok, "50 个点跨 3 批全部读对、顺序不串");
+    }
+
+    /* ---------- Test disconnection / 验证掉线处理 ---------- */
     printf("== 掉线后读取应失败 ==\n");
     Srv_Stop(srv);
     usleep(200 * 1000);

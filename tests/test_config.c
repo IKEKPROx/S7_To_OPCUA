@@ -51,6 +51,9 @@ int main(void)
     check(p1->tags[0].type == S7_INT, "plc[1].tag[0].type = INT");
     check(p1->poll_interval_ms == 500, "plc[1].poll = 500ms");
 
+    /* 批量读开关：gateway.json 未设 collection.batch_read，应默认 1 */
+    check(cfg.batch_read == 1, "batch_read 缺省 = 1 (向后兼容)");
+
     config_free(&cfg);
     check(cfg.plcs == NULL && cfg.plc_count == 0, "config_free 后结构被清空");
 
@@ -60,6 +63,15 @@ int main(void)
           "BOOL 缺 bit 的配置被拒绝 (返回非0)");
     check(config_load("tests/bad_config2.json", &bad) != 0,
           "负 start / poll=0 的配置被拒绝 (范围校验)");
+
+    printf("== Collection: batch_read 显式关闭 ==\n");
+    GatewayCfg off;
+    int rc_off = config_load("tests/batch_off.json", &off);
+    check(rc_off == 0, "batch_off.json 加载成功");
+    if (rc_off == 0) {
+        check(off.batch_read == 0, "batch_read 显式 0 被正确解析");
+        config_free(&off);
+    }
 
     printf("\n结果: %d 通过, %d 失败\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;

@@ -43,6 +43,7 @@ typedef struct {
 typedef struct {
     int     opcua_port;
     int     cache_ttl_ms;
+    int     batch_read;   /* 1=开启批量读(默认)，读任一过期点会一次性刷新同台 PLC 的所有过期点；0=退回逐点读 */
     PlcCfg *plcs;
     size_t  plc_count;
 } GatewayCfg;

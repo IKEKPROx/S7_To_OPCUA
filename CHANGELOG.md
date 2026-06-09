@@ -2,6 +2,44 @@
 
 本项目遵循语义化版本（SemVer）。 · This project follows Semantic Versioning (SemVer).
 
+## v0.1.2 — 2026-06-09
+
+本版重点：**批量读（ReadMultiVars 攒批刷新）**——把“一个点一趟 PLC”压成“一趟读多个点”，大幅降低多点位场景的 PLC 往返次数。
+
+> Highlights: **Batch reading (ReadMultiVars coalescing)** — collapses "one PLC round-trip per point" into "many points per round-trip", greatly cutting PLC round-trips for multi-point workloads.
+
+### ✨ 新增 · Added
+
+- **批量读** `s7_conn_read_many()`：用 snap7 `Cli_ReadMultiVars` 一次请求读多个变量，内部自动按 `MaxVars=20`（S7 协议每请求变量数硬上限）分批，逐项返回成败。
+  · **Batch read** `s7_conn_read_many()`: reads multiple variables per request via snap7 `Cli_ReadMultiVars`, auto-splitting by `MaxVars=20` (S7 per-request hard limit), with per-item results.
+- **按需攒批刷新**：OPC UA 读任一过期节点时，网关把**同一台 PLC 当前所有过期点**一次性批量读回写入缓存，其余点直接命中缓存。读 N 个点的 PLC 往返从 N 趟降到 `ceil(N/20)` 趟。
+  · **On-demand batch refresh**: reading any stale node makes the gateway bulk-read **all currently-stale tags of that PLC** at once into cache; other nodes hit the cache. PLC round-trips for N points drop from N to `ceil(N/20)`.
+- **配置开关** `collection.batch_read`（默认 `1` 开启）：填 `0` 可关回 0.1.1 的逐点读行为。
+  · **Config switch** `collection.batch_read` (default `1`): set `0` to fall back to 0.1.1 per-point reads.
+- **链路冒烟脚本** `scripts/bench_batch.sh`：一键起 `fake_plc + gateway + ua_monitor` 验证整条链路。
+  · **Link smoke script** `scripts/bench_batch.sh`: brings up `fake_plc + gateway + ua_monitor` to verify the whole pipeline.
+
+### ✅ 兼容性 / 质量 · Compatibility / Quality
+
+- 纯追加、向后兼容：`batch_read` 默认开但对外行为与 0.1.1 一致（只是更快）；旧配置无需改动；`s7_conn_read_tag`、NodeId、TTL、12 种类型、配置格式全不变。
+  · Additive and backward-compatible: `batch_read` defaults on but external behavior matches 0.1.1 (just faster); legacy configs need no change.
+- 全部 **95** 个单元/集成测试通过（从 71 增加）：新增 s7_client 跨批读、config 开关、OPC UA 场景 B（25 点跨 2 批批量刷新）与场景 C（关闭后运行时退回逐点）。
+  · All **95** tests pass (up from 71): added s7_client cross-batch read, config switch, and OPC UA scenario B (25-point 2-batch refresh) / scenario C (runtime fallback when off).
+- 真链路实测（`fake_plc + gateway + ua_monitor`，11 点）：`batch_read=1` 每轮 **1 趟** `ReadMultiVars`；`batch_read=0` 每轮 **11 趟** `ReadArea`。
+  · Live test (11 points): `batch_read=1` → **1** `ReadMultiVars` per cycle; `=0` → **11** `ReadArea` per cycle.
+
+### 📦 镜像用法 · Image Usage
+
+```bash
+docker pull impxssive/s7-opcua:0.1.2
+
+# 直接用 JSON 配置 · Use a JSON config
+docker run --rm -p 4840:4840 -v ./config:/app/config \
+  impxssive/s7-opcua:0.1.2 config/gateway.json
+```
+
+---
+
 ## v0.1.1 — 2026-06-08
 
 本版重点：**Excel 点表导入** 与 **按点表 NodeID 暴露节点**，并把点表转换整合进 Docker 镜像。

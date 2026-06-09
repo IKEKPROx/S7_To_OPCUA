@@ -1,6 +1,6 @@
 # S7_to_OPCUA: Siemens S7 to OPC UA Protocol Gateway
 
-![version](https://img.shields.io/badge/version-0.1.1-blue) [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-impxssive%2Fs7--opcua-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/impxssive/s7-opcua) ![platforms](https://img.shields.io/badge/platforms-linux%2Famd64%20%7C%20arm64-555) ![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)
+![version](https://img.shields.io/badge/version-0.1.2-blue) [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-impxssive%2Fs7--opcua-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/impxssive/s7-opcua) ![platforms](https://img.shields.io/badge/platforms-linux%2Famd64%20%7C%20arm64-555) ![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)
 
 This project is an industrial communication gateway developed in C. It is designed for efficient data acquisition from Siemens S7 series PLCs (including S7-300/400/1200/1500) and converting the data into standard **OPC UA** nodes. This facilitates seamless data access for SCADA, MES, and various OPC UA client systems (e.g., UaExpert).
 
@@ -222,7 +222,7 @@ The gateway's runtime behavior is centrally managed via `config/gateway.json`. D
 ```jsonc
 {
   "opcua": { "port": 4840 },               // [Optional] OPC UA listen port (default 4840)
-  "collection": { "cache_ttl_ms": 1000 },  // [Optional] Cache TTL in ms (default 1000)
+  "collection": { "cache_ttl_ms": 1000, "batch_read": 1 },  // [Optional] Cache TTL ms (default 1000) + batch-read switch (default 1 on, 0=per-point)
   "plcs": [                                // Physical PLC network list
     {
       "name": "Line1_PLC",                 // [Required] PLC Identifier (Forms NodeId Namespace)
@@ -253,6 +253,8 @@ The gateway's runtime behavior is centrally managed via `config/gateway.json`. D
 | `node_id` | Explicit OPC UA NodeId (overrides auto-generation settings) | Standard NodeId format, e.g. `ns=2;s=[1001001]` | Optional (see Chapter 16) |
 
 > **Configuration Note**: `node_id` is an optional field aimed at providing backward compatibility and flexible integration capabilities. If specified, the gateway aligns with the assigned NodeId to expose nodes, facilitating seamless mapping with field engineering point tables or external SCADA systems. If omitted, the system defaults to generating NodeIds using the `ns=1;s=PLCName.TagName` standard structure.
+
+> **Acquisition Behavior (`collection`)**: `cache_ttl_ms` is the cache validity in milliseconds (default 1000) — a node value is reused within the TTL and only read through to the PLC once expired. `batch_read` is the **batch-read switch** (default `1`, on): when on, an OPC UA read of any stale node makes the gateway use `ReadMultiVars` to bulk-read **all currently-stale tags of that PLC** at once (auto-split by `MaxVars=20`) into cache, so a client reading N points drops PLC round-trips from N to `ceil(N/20)`; set `0` to fall back to per-point reads (identical to 0.1.1).
 
 ### Type Mapping Conventions
 
@@ -376,11 +378,11 @@ When encountering runtime anomalies during deployment and debugging, operators m
 
 ## 14. Roadmap and Future Iterations
 
-**Currently Delivered Core Functional Modules**: Heterogeneous multi-device node integration handling, structured JSON-centric data mapping schemas, TTL-controlled and on-demand polling-driven data routing dissemination, strictly read-only protocol layer transformations, robust communication linkage state trapping accompanied by degradation preprocessing, **integrated independent Excel point-table import and Siemens address auto-parsing tooling**, and **support for customizable NodeID-guided node exposure deployments**.
+**Currently Delivered Core Functional Modules**: Heterogeneous multi-device node integration handling, structured JSON-centric data mapping schemas, TTL-controlled and on-demand polling-driven data routing dissemination, strictly read-only protocol layer transformations, robust communication linkage state trapping accompanied by degradation preprocessing, **integrated independent Excel point-table import and Siemens address auto-parsing tooling**, **support for customizable NodeID-guided node exposure deployments**, and **batch reading (`ReadMultiVars` coalescing: on demand, merges a PLC's stale points into a single read, cutting N-point round-trips to `ceil(N/20)`)**.
 
 **Anticipated Technological Evolution Trajectory**:
 - **Bidirectional Data Links**: Introduction of data write capabilities allowing downstream control directive assignments.
-- **Underlying Physical Transport Optimizations**: Aggregation of Protocol Data Unit (PDU) concurrency management and contiguous memory block sequential reads to surmount physical transport bus bottlenecks and maximize throughput.
+- **Underlying Physical Transport Optimizations (in progress)**: Batch reading (`ReadMultiVars` coalescing) shipped in v0.1.2; a future step adds **contiguous address-range merging** (splicing adjacent points into one block read, then slicing) to further cut PLC round-trips.
 - **Service Security Infrastructure Fortification**: Adoption of X.509 certificate identity authentication protocols combined with Transport Layer Security encryption to fulfill industrial internet security compliance mandates.
 - **Complex Hierarchical Data Schema Mapping**: Expansion into object-oriented data modeling frameworks supporting arbitrary-length strings (STRING) and multi-dimensional array mapping translations.
 - **Dynamic Configuration Hot-Reload Capabilites**: Enabling dynamic loading and seamless application of modified tag configuration sets while bypassing interruptions to the core service process execution.
@@ -396,7 +398,7 @@ Image: [`impxssive/s7-opcua`](https://hub.docker.com/r/impxssive/s7-opcua) (Dock
 Pull the image:
 
 ```bash
-docker pull impxssive/s7-opcua:0.1.1
+docker pull impxssive/s7-opcua:0.1.2
 ```
 
 The image bundles the **Excel point-table converter** (Python 3 runtime + `openpyxl` + `tools/xlsx_to_config.py`); the entrypoint supports two startup modes:
@@ -405,18 +407,18 @@ The image bundles the **Excel point-table converter** (Python 3 runtime + `openp
 # Mode 1: load a JSON config directly (standard)
 # mount your host config directory to /app/config via -v
 docker run --rm -p 4840:4840 -v /host/config-dir:/app/config \
-  impxssive/s7-opcua:0.1.1 config/your-config.json
+  impxssive/s7-opcua:0.1.2 config/your-config.json
 
 # Mode 2: feed an Excel point-table; it is converted inside the container, then the gateway starts
 docker run --rm -p 4840:4840 -v /host/config-dir:/app/config \
-  impxssive/s7-opcua:0.1.1 --xlsx /app/config/points.xlsx \
+  impxssive/s7-opcua:0.1.2 --xlsx /app/config/points.xlsx \
   --ip 192.168.0.10 --plc-name FurnacePLC
 ```
 
 > **Notes**:
 > - After `--xlsx` comes the Excel file path; remaining args (`--ip`, `--port`, `--plc-name`, `--opcua-port`, `--cache-ttl-ms`, …) are forwarded to the converter (see Section 16). Chinese tables must include `--ip`.
 > - Ports: `-p 4840` exposes the OPC UA server; the gateway dials out to the PLC on port 102, so Docker's default bridge network suffices.
-> - In production, prefer a pinned version (e.g. `0.1.1`) over `latest` for reproducibility.
+> - In production, prefer a pinned version (e.g. `0.1.2`) over `latest` for reproducibility.
 
 ---
 

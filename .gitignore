@@ -26,6 +26,9 @@ config/cn_fake.json
 .claude/
 .vscode/
 
+# Cowork / 工具会话产物（历史生成物，不入库）/ session outputs
+outputs/
+
 # Docker / 构建文件：本地保留(还能 build/推镜像)，但不放上 GitHub —— 仓库只展示代码
 .dockerignore
 Dockerfile

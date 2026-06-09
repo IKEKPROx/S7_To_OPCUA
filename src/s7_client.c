@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* snap7 的 ReadMultiVars 每个请求最多 20 个变量(= snap7.h 里的 MaxVars，
+   西门子 PDU 硬上限)。这里用宏而非直接用 MaxVars，是为了能开定长栈数组(避免 VLA)。 */
+#define S7_MAX_VARS 20
+
 /* Internal connection handle structure / 内部连接句柄结构体 */
 struct S7Conn {
     const PlcCfg *cfg;
@@ -94,6 +98,68 @@ int s7_conn_read_tag(S7Conn *c, const TagCfg *tag, S7Value *out)
     if (s7_decode(tag->type, buf, tag->bit, out) != 0)
         return -1;
     return 0;
+}
+
+int s7_conn_read_many(S7Conn *c, const TagCfg **tags, size_t n,
+                      S7Value *out_values, int *out_results)
+{
+    if (!c || !tags || !out_values || !out_results) return -1;
+
+    int overall = 0;  /* 只要有一批通信失败就记下其错误码 */
+
+    /* 按 MaxVars(20) 分批，一批最多读 20 个变量 / Split into batches of MaxVars */
+    for (size_t done = 0; done < n; ) {
+        size_t batch = n - done;
+        if (batch > S7_MAX_VARS) batch = S7_MAX_VARS;
+
+        TS7DataItem items[S7_MAX_VARS];      /* 传给 snap7 的请求项 */
+        uint8_t     bufs[S7_MAX_VARS][8];    /* 每项的接收缓冲，最大 8 字节(LREAL) */
+        size_t      item2gi[S7_MAX_VARS];    /* 请求项下标 -> 全局点下标 的映射 */
+        int         item_count = 0;
+
+        /* 组装本批请求：尺寸非法的点不进请求，直接判失败 / Assemble request items */
+        for (size_t k = 0; k < batch; k++) {
+            size_t gi = done + k;
+            const TagCfg *tag = tags[gi];
+            int size = tag ? s7_type_size(tag->type) : 0;
+            if (size <= 0 || size > 8) { out_results[gi] = -1; continue; }
+
+            TS7DataItem *it = &items[item_count];
+            it->Area     = to_snap7_area(tag->area);
+            it->WordLen  = S7WLByte;                              /* 按字节读，与单读一致 */
+            it->DBNumber = (tag->area == AREA_DB) ? tag->db : 0;
+            it->Start    = tag->start;
+            it->Amount   = size;
+            it->Result   = 0;
+            it->pdata    = bufs[item_count];
+            item2gi[item_count] = gi;
+            item_count++;
+        }
+
+        if (item_count > 0) {
+            int fn = Cli_ReadMultiVars(c->client, items, item_count);
+            if (fn != 0) {
+                /* 整批失败(多半掉线)：本批入选点全判失败，并标记需重连 */
+                c->connected = false;
+                overall = fn;
+                for (int j = 0; j < item_count; j++)
+                    out_results[item2gi[j]] = fn;
+            } else {
+                /* 逐项看 Result：成功的解码进 out_values，失败的记下错误码 */
+                for (int j = 0; j < item_count; j++) {
+                    size_t gi = item2gi[j];
+                    const TagCfg *tag = tags[gi];
+                    if (items[j].Result == 0 &&
+                        s7_decode(tag->type, bufs[j], tag->bit, &out_values[gi]) == 0)
+                        out_results[gi] = 0;
+                    else
+                        out_results[gi] = items[j].Result ? items[j].Result : -1;
+                }
+            }
+        }
+        done += batch;
+    }
+    return overall;
 }
 
 void s7_conn_error_text(int err, char *buf, size_t size)

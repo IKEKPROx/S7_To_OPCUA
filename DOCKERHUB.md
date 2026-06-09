@@ -20,18 +20,18 @@
 ## 🚀 快速开始 · Quick Start
 
 ```bash
-docker pull impxssive/s7-opcua:0.1.1
+docker pull impxssive/s7-opcua:0.1.2
 ```
 
 ```bash
 # 方式①：直接用 JSON 配置 · Mode 1: use a JSON config directly
 docker run --rm -p 4840:4840 -v ./config:/app/config \
-  impxssive/s7-opcua:0.1.1 config/gateway.json
+  impxssive/s7-opcua:0.1.2 config/gateway.json
 
 # 方式②：喂 Excel 点表，容器内自动转换后启动
 #        Mode 2: feed an Excel table; it is converted inside the container, then the gateway starts
 docker run --rm -p 4840:4840 -v ./config:/app/config \
-  impxssive/s7-opcua:0.1.1 --xlsx /app/config/points.xlsx --ip 192.168.0.10 --plc-name 炉区PLC
+  impxssive/s7-opcua:0.1.2 --xlsx /app/config/points.xlsx --ip 192.168.0.10 --plc-name 炉区PLC
 ```
 
 启动后用任意 OPC UA 客户端连 `opc.tcp://<主机IP>:4840`。
@@ -50,10 +50,12 @@ docker run --rm -p 4840:4840 -v ./config:/app/config \
 
 ## 🏷️ 标签 · Tags
 
-- `0.1.1` — 当前版本：Excel 点表导入 + 按点表 NodeID 暴露。
-  · Current release: Excel point-table import + expose-by-table-NodeID.
-- 生产建议用**明确版本号**（如 `0.1.1`）而非 `latest`，保证可复现。
-  · In production, prefer a **pinned version** (e.g. `0.1.1`) over `latest` for reproducibility.
+- `0.1.2` — 当前版本：批量读（`ReadMultiVars` 攒批，多点位场景大幅减少 PLC 往返）。
+  · Current release: batch reading (`ReadMultiVars` coalescing; far fewer PLC round-trips for multi-point workloads).
+- `0.1.1` — Excel 点表导入 + 按点表 NodeID 暴露。
+  · Excel point-table import + expose-by-table-NodeID.
+- 生产建议用**明确版本号**（如 `0.1.2`）而非 `latest`，保证可复现。
+  · In production, prefer a **pinned version** (e.g. `0.1.2`) over `latest` for reproducibility.
 
 详细文档（点表列映射、地址解析、类型映射、源码构建等）见项目 README。
 · Full docs (column mapping, address parsing, type mapping, building from source) are in the project README.

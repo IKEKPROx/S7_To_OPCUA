@@ -1,0 +1,13 @@
+{
+  "opcua": { "port": 4840 },
+  "collection": { "batch_read": 0 },
+  "plcs": [
+    {
+      "name": "P",
+      "ip": "127.0.0.1",
+      "tags": [
+        { "name": "x", "area": "M", "start": 0, "type": "INT" }
+      ]
+    }
+  ]
+}

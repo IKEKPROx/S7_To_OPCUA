@@ -15,6 +15,8 @@ typedef struct {
     const TagCfg *tag;
     TagCache     *cache;
     size_t        slot;
+    const PlcCfg *plc;    /* 所属 PLC：批量刷新时遍历它的所有 tag / Owning PLC for batch refresh */
+    bool          batch;  /* 是否走批量攒批刷新 / Batch-refresh mode */
 } NodeCtx;
 
 struct OpcuaServer {
@@ -100,6 +102,69 @@ static void read_plc_into_cache(NodeCtx *ctx)
 }
 
 /*
+ * Batch-refresh all stale tags of one PLC / 批量刷新一台 PLC 的所有过期点
+ *
+ * 按需采集的核心优化：某个点过期触发读取时，不只读它自己，而是把同一台 PLC
+ * 当前所有“不新鲜”的点收集起来，用 s7_conn_read_many 一次性(按 MaxVars 分批)读回、
+ * 写进缓存。于是客户端一次读 N 个点 → 第一个过期点就把全部刷新了，其余 N-1 个点
+ * 直接命中缓存，把 N 趟 PLC 往返压成 ceil(N/20) 趟。
+ *
+ * slot 槽位顺序与 plc->tags 顺序一一对应(见 create 里 slot=t)。
+ */
+static void refresh_plc_batch(S7Conn *conn, const PlcCfg *plc, TagCache *cache)
+{
+    size_t n = plc->tag_count;
+
+    /* 四个并行数组：待读 tag 指针 / 它的缓存槽位 / 读回的值 / 逐项结果。
+       刷新不是热路径(受 TTL 节流)，malloc/free 可接受；大点表也不会爆栈。 */
+    const TagCfg **tg = malloc(n * sizeof(*tg));
+    size_t        *sl = malloc(n * sizeof(*sl));
+    S7Value       *vv = malloc(n * sizeof(*vv));
+    int           *rr = malloc(n * sizeof(*rr));
+    if (!tg || !sl || !vv || !rr) {
+        /* malloc 失败：退化为逐点读，保证功能不挂 / Fallback to per-tag reads */
+        free(tg); free(sl); free(vv); free(rr);
+        for (size_t t = 0; t < n; t++) {
+            if (tag_cache_get_fresh(cache, t, NULL, NULL)) continue;
+            S7Value one;
+            if (conn && s7_conn_is_connected(conn) &&
+                s7_conn_read_tag(conn, &plc->tags[t], &one) == 0)
+                tag_cache_set_good(cache, t, &one);
+            else
+                tag_cache_set_bad(cache, t);
+        }
+        return;
+    }
+
+    /* 收集当前所有“不新鲜”的点(UNINIT 或已过期)。新鲜的直接跳过，不重复读 PLC。 */
+    size_t cnt = 0;
+    for (size_t t = 0; t < n; t++) {
+        if (tag_cache_get_fresh(cache, t, NULL, NULL)) continue;
+        tg[cnt] = &plc->tags[t];
+        sl[cnt] = t;
+        cnt++;
+    }
+    if (cnt == 0) { free(tg); free(sl); free(vv); free(rr); return; }
+
+    /* 懒连接：没连上先连；连不上(或无连接)则这些点全标坏 / Lazy connect, mark bad on failure */
+    if (!conn ||
+        (!s7_conn_is_connected(conn) && s7_conn_connect(conn) != 0)) {
+        for (size_t j = 0; j < cnt; j++) tag_cache_set_bad(cache, sl[j]);
+        free(tg); free(sl); free(vv); free(rr);
+        return;
+    }
+
+    /* 一次(分批)读回，逐项写进缓存 / Bulk read, write back per item */
+    s7_conn_read_many(conn, tg, cnt, vv, rr);
+    for (size_t j = 0; j < cnt; j++) {
+        if (rr[j] == 0) tag_cache_set_good(cache, sl[j], &vv[j]);
+        else            tag_cache_set_bad(cache, sl[j]);
+    }
+
+    free(tg); free(sl); free(vv); free(rr);
+}
+
+/*
  * DataSource Read Callback (On-demand polling) / DataSource 读取回调（按需轮询）
  */
 static UA_StatusCode
@@ -115,8 +180,10 @@ read_node(UA_Server *server, const UA_NodeId *sessionId, void *sessionContext,
     bool real_client = (sessionId != NULL && sessionId->namespaceIndex != 0);
 
     /* Perform on-demand fetch if cached data is stale / 若缓存过期则执行按需拉取 */
-    if (real_client && !tag_cache_get_fresh(ctx->cache, ctx->slot, NULL, NULL))
-        read_plc_into_cache(ctx);
+    if (real_client && !tag_cache_get_fresh(ctx->cache, ctx->slot, NULL, NULL)) {
+        if (ctx->batch) refresh_plc_batch(ctx->conn, ctx->plc, ctx->cache); /* 攒批：连同台 PLC 其他过期点一起刷 */
+        else            read_plc_into_cache(ctx);                            /* 逐点：只刷当前点(0.1.1 行为) */
+    }
 
     /* Retrieve active snapshot / 获取有效快照 */
     S7Value v; TagQuality q; int64_t ts_ms = 0;
@@ -256,6 +323,8 @@ OpcuaServer *opcua_server_create(const GatewayCfg *cfg, TagCache *caches, S7Conn
             s->ctxs[k].tag   = tag;
             s->ctxs[k].cache = &caches[p];
             s->ctxs[k].slot  = t;
+            s->ctxs[k].plc   = plc;                      /* 批量刷新要遍历同 PLC 所有 tag */
+            s->ctxs[k].batch = (cfg->batch_read != 0);   /* 配置开关：是否攒批 */
 
             /* Decide NodeId: explicit from config, else auto "PLC.tag" / 决定 NodeId：配置有就用，否则自动 */
             UA_NodeId nid;

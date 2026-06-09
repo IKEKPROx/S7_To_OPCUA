@@ -197,9 +197,11 @@ int config_load(const char *path, GatewayCfg *out)
 
 
     out->cache_ttl_ms = 1000;
+    out->batch_read   = 1;   /* 默认开批量读；collection.batch_read=0 可关回逐点(0.1.1 行为) */
     const cJSON *jcol = cJSON_GetObjectItemCaseSensitive(root, "collection");
     if (jcol) {
         if (get_int(jcol, "cache_ttl_ms", 0, 1000, &out->cache_ttl_ms) != 0) goto done;
+        if (get_int(jcol, "batch_read", 0, 1, &out->batch_read) != 0)        goto done;
     }
     if (out->cache_ttl_ms <= 0) {
         fprintf(stderr, "config: cache_ttl_ms 必须 >0: %d\n", out->cache_ttl_ms);

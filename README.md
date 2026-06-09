@@ -1,6 +1,6 @@
 # S7_to_OPCUA：西门子 S7 至 OPC UA 协议网关
 
-![version](https://img.shields.io/badge/version-0.1.1-blue) [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-impxssive%2Fs7--opcua-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/impxssive/s7-opcua) ![platforms](https://img.shields.io/badge/platforms-linux%2Famd64%20%7C%20arm64-555) ![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)
+![version](https://img.shields.io/badge/version-0.1.2-blue) [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-impxssive%2Fs7--opcua-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/impxssive/s7-opcua) ![platforms](https://img.shields.io/badge/platforms-linux%2Famd64%20%7C%20arm64-555) ![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)
 
 本项目是一个基于 C 语言开发的工业通信网关，旨在实现西门子 S7 系列 PLC（包含 S7-300/400/1200/1500）数据的高效采集，并将其转换为标准 **OPC UA** 节点，以便于 SCADA、MES 及各类 OPC UA 客户端系统（如 UaExpert）进行数据读取。
 
@@ -222,7 +222,7 @@ make tsan       # (高级选项) 基于 ThreadSanitizer 实施数据争用 (Data
 ```jsonc
 {
   "opcua": { "port": 4840 },               // [可选] OPC UA 监听端口，缺省为 4840
-  "collection": { "cache_ttl_ms": 1000 },  // [可选] 缓存时效周期(ms)，缺省为 1000
+  "collection": { "cache_ttl_ms": 1000, "batch_read": 1 },  // [可选] 缓存TTL(ms,缺省1000) + 批量读开关(缺省1开, 0=逐点)
   "plcs": [                                // 物理 PLC 组网清单
     {
       "name": "Line1_PLC",                 // [必填] PLC 标识 (构成 NodeId 的 Namespace)
@@ -253,6 +253,8 @@ make tsan       # (高级选项) 基于 ThreadSanitizer 实施数据争用 (Data
 | `node_id` | 显式 OPC UA NodeId（覆盖自动生成设定） | 标准 NodeId 格式，如 `ns=2;s=[1001001]` | 可选（详见第 16 章） |
 
 > **配置说明**：`node_id` 为可选字段，旨在提供向后兼容性与灵活对接能力。若配置此字段，网关将按照指定的 NodeId 暴露节点，以便与现场工程点表或上位机系统的配置无缝对接；若省略该字段，系统将采用默认规则自动生成格式为 `ns=1;s=PLC名称.点位名称` 的 NodeId。
+
+> **采集行为 (`collection`)**：`cache_ttl_ms` 为缓存时效（毫秒，缺省 1000）——节点值在 TTL 内复用缓存，过期才穿透读取 PLC。`batch_read` 为**批量读开关**（缺省 `1` 开启）：开启时，OPC UA 读任一过期节点会触发网关用 `ReadMultiVars` 把**同一台 PLC 当前所有过期点**一次性（按 `MaxVars=20` 自动分批）读回缓存，于是上位机一次读 N 个点的 PLC 往返从 N 趟降到 `ceil(N/20)` 趟；填 `0` 可关回逐点读（与 0.1.1 行为一致）。
 
 ### 类型映射体系规范
 
@@ -376,11 +378,11 @@ make tsan       # (高级选项) 基于 ThreadSanitizer 实施数据争用 (Data
 
 ## 14. 版本规划与后续迭代
 
-**当前版本已交付功能模块**：异构多设备节点接入管理、基于 JSON 结构化数据映射模型、基于按需采集引擎与 TTL 控制策略的数据分发路由、只读协议层转换支持、通信链路状态异常捕捉与服务降级预处理、**集成独立 Excel 点表导入与西门子地址自动解析工具**、**支持按用户自定义 NodeID 规范实现节点暴露**。
+**当前版本已交付功能模块**：异构多设备节点接入管理、基于 JSON 结构化数据映射模型、基于按需采集引擎与 TTL 控制策略的数据分发路由、只读协议层转换支持、通信链路状态异常捕捉与服务降级预处理、**集成独立 Excel 点表导入与西门子地址自动解析工具**、**支持按用户自定义 NodeID 规范实现节点暴露**、**批量读（`ReadMultiVars` 攒批：按需把同一台 PLC 的过期点合并为一次读取，N 点往返降到 `ceil(N/20)` 趟）**。
 
 **未来技术演进规划**：
 - **双向数据链路构建**：引入数据写入与控制指令下发能力。
-- **底层物理通信优化**：整合 PDU 协议数据单元并发控制与连续区块批量读取算法，以突破物理总线传输的并发瓶颈，提升整体吞吐率。
+- **底层物理通信优化（进行中）**：批量读（`ReadMultiVars` 攒批刷新）已于 v0.1.2 交付；后续将增加**连续地址区间合并**（把地址相邻的点拼成一次区块读再切片解码），进一步压低 PLC 往返。
 - **服务安全体系强化**：引入 X.509 证书身份认证体系及传输层加密管道，满足工业互联网安全规范要求。
 - **复杂数据结构映射**：扩展支持面向对象的数据建模，实现不定长字符串 (STRING) 以及多维数组等复杂数据类型的解析与传输。
 - **动态配置热重载能力**：支持在保障服务主进程不中断的前提下，动态加载并应用更新后的点位配置规则。
@@ -396,7 +398,7 @@ make tsan       # (高级选项) 基于 ThreadSanitizer 实施数据争用 (Data
 拉取镜像：
 
 ```bash
-docker pull impxssive/s7-opcua:0.1.1
+docker pull impxssive/s7-opcua:0.1.2
 ```
 
 镜像内部已集成 **Excel 点表自动转换工具**（Python 3 运行时 + `openpyxl` + `tools/xlsx_to_config.py`），入口脚本支持两种启动方式：
@@ -405,18 +407,18 @@ docker pull impxssive/s7-opcua:0.1.1
 # 方式一：直接加载 JSON 配置启动（常规模式）
 # 通过 -v 将宿主机的配置目录挂载至容器的 /app/config
 docker run --rm -p 4840:4840 -v /宿主机/配置目录:/app/config \
-  impxssive/s7-opcua:0.1.1 config/你的配置.json
+  impxssive/s7-opcua:0.1.2 config/你的配置.json
 
 # 方式二：直接传入 Excel 点表，容器内自动完成转换后再启动网关
 docker run --rm -p 4840:4840 -v /宿主机/配置目录:/app/config \
-  impxssive/s7-opcua:0.1.1 --xlsx /app/config/点表.xlsx \
+  impxssive/s7-opcua:0.1.2 --xlsx /app/config/点表.xlsx \
   --ip 192.168.0.10 --plc-name 炉区PLC
 ```
 
 > **说明**：
 > - `--xlsx` 后的首个参数为 Excel 文件路径；其余参数（`--ip`、`--port`、`--plc-name`、`--opcua-port`、`--cache-ttl-ms` 等）将原样转发给内部转换脚本（详见第 16 章）。处理中文点表时必须提供 `--ip`。
 > - 端口：`-p 4840` 用于对外暴露 OPC UA 服务端口；网关作为客户端向 PLC 出站连接 102 端口，使用 Docker 默认桥接网络即可。
-> - 生产环境建议使用**明确的版本号**（如 `0.1.1`）而非 `latest`，以保证部署可复现。
+> - 生产环境建议使用**明确的版本号**（如 `0.1.2`）而非 `latest`，以保证部署可复现。
 
 ---
 

@@ -35,6 +35,17 @@ bool s7_conn_is_connected(S7Conn *c);
 int s7_conn_read_tag(S7Conn *c, const TagCfg *tag, S7Value *out);
 
 /*
+ * Read multiple tags in one shot / 一次读取多个点位
+ *
+ * 用 snap7 的 ReadMultiVars 把"一个点一趟"压成"一趟多个点"，内部自动按
+ * MaxVars=20 分批。tags/out_values/out_results 三个数组长度都是 n：
+ *   out_results[i]==0 表示第 i 个点读成功(out_values[i] 才有效)；非0=失败。
+ * 返回 0=整个流程无通信故障；非0=至少有一批通信失败(如掉线)。
+ */
+int s7_conn_read_many(S7Conn *c, const TagCfg **tags, size_t n,
+                      S7Value *out_values, int *out_results);
+
+/*
  * Convert snap7 error code to text / 转换 Snap7 错误码为文本
  */
 void s7_conn_error_text(int err, char *buf, size_t size);
