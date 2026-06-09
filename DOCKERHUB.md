@@ -1,4 +1,4 @@
-# S7_to_OpenUA — 西门子 S7 转 OPC UA 协议网关 · Siemens S7 → OPC UA Protocol Gateway
+# S7_to_OPCUA — 西门子 S7 转 OPC UA 协议网关 · Siemens S7 → OPC UA Protocol Gateway
 
 把西门子 S7 PLC（snap7 / ISO-on-TCP）的数据转换成标准 **OPC UA** 暴露出去。纯 C 实现（基于 open62541），轻量、**按需采集保护 PLC**，并支持用 **Excel 点表**一键生成配置。
 

@@ -61,7 +61,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "注册 DB%d 失败\n", DB_NUMBER); Srv_Destroy(&srv); return 1;
     }
 
-    int err = Srv_StartTo(srv, "127.0.0.1");
+    int err = Srv_StartTo(srv, "0.0.0.0");
     if (err != 0) {
         char e[256]; Srv_ErrorText(err, e, sizeof(e));
         fprintf(stderr, "启动失败(端口 %u): %s\n", port, e);
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);
     printf("假 PLC 已启动：监听端口 %u，DB%d 大小 %d 字节\n", port, DB_NUMBER, DB_SIZE);
-    printf("网关请用 ip=127.0.0.1 port=%u rack=0 slot=1 连接（见 config/fake_plc.json）\n", port);
+    printf("本机网关请用 ip=127.0.0.1；Docker 网关请用 Mac 局域网 IP 连接，port=%u rack=0 slot=1\n", port);
     printf("Ctrl+C 退出。\n\n");
 
     /* ---- 模拟循环：每 500ms 更新一次数据，像真设备一样动起来 ---- */

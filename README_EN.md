@@ -1,4 +1,4 @@
-# S7_to_OpenUA: Siemens S7 to OPC UA Protocol Gateway
+# S7_to_OPCUA: Siemens S7 to OPC UA Protocol Gateway
 
 ![version](https://img.shields.io/badge/version-0.1.1-blue) [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-impxssive%2Fs7--opcua-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/impxssive/s7-opcua) ![platforms](https://img.shields.io/badge/platforms-linux%2Famd64%20%7C%20arm64-555) ![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)
 
@@ -80,7 +80,7 @@ The system employs an **"On-Demand Polling mechanism combined with a TTL-based c
 ## 3. Directory Structure
 
 ```text
-S7_to_OpenUA/
+S7_to_OPCUA/
 ├── Makefile                  # Build script (supports make, make test, make clean)
 ├── README_EN.md              # Project documentation (English)
 ├── config/
