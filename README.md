@@ -1,4 +1,4 @@
-# S7_to_OpenUA：西门子 S7 至 OPC UA 协议网关
+# S7_to_OpcUA：西门子 S7 至 OPC UA 协议网关
 
 ![version](https://img.shields.io/badge/version-0.1.1-blue) [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-impxssive%2Fs7--opcua-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/impxssive/s7-opcua) ![platforms](https://img.shields.io/badge/platforms-linux%2Famd64%20%7C%20arm64-555) ![C11](https://img.shields.io/badge/C-11-00599C?logo=c&logoColor=white)
 
